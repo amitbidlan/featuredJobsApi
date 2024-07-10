@@ -19,7 +19,11 @@ def create_connection():
     except Error as e:
         print(f"Error: '{e}'")
         return None
-
+        
+@app.route('/')
+def hello():
+    return "Hello, World!"
+    
 # Route to get data from a table based on brand_code, job_type, and translation code
 @app.route('/get_data', methods=['GET'])
 def get_data():
