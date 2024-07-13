@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify
 import mysql.connector
 from mysql.connector import Error
-import json
 
 app = Flask(__name__)
 
@@ -19,21 +18,21 @@ def create_connection():
     except Error as e:
         print(f"Error: '{e}'")
         return None
-        
+
 @app.route('/')
 def hello():
     return "Hello, World!"
-    
+
 # Route to get data from a table based on brand_code, job_type, and translation code
 @app.route('/get_data', methods=['GET'])
 def get_data():
     try:
         brand_code = request.args.get('brand_code')
-        translation_code = request.args.get('translation_code')
         job_type = request.args.get('job_type')
+        translation_code = request.args.get('translation_code')
 
-        if not brand_code or not translation_code:
-            return jsonify({"error": "brand_code and translation_code are required parameters"}), 400
+        if not translation_code:
+            return jsonify({"error": "translation_code is a required parameter"}), 400
 
         valid_translation_columns = [
             "jp_translation", "en_translation", "hi_translation", "es_translation",
@@ -43,6 +42,23 @@ def get_data():
 
         if translation_code not in valid_translation_columns:
             return jsonify({"error": "Invalid translation_code"}), 400
+        
+        if translation_code == 'en_translation':
+            my_columns = [
+                "job_id", "job_type", "brand_code", "prefecture", "end_point", 
+                "listing_date", "expiry_date", "company_name_en", "job_detail_caption_en", 
+                "job_detail_text_en", "company_address_en", "latitude", "longitude", 
+                "image_url", "phone_number", "job_type_en", "salary_en", "working_hours_en"
+            ]
+        elif translation_code == 'jp_translation':
+            my_columns = [
+                "job_id", "job_type", "brand_code", "prefecture", "end_point", 
+                "listing_date", "expiry_date", "company_name_jp", "job_detail_caption_jp", 
+                "job_detail_text_jp", "company_address_jp", "latitude", "longitude", 
+                "image_url", "phone_number", "job_type_jp", "salary_jp", "working_hours_jp"
+            ]
+        
+        columns_str = ', '.join(my_columns)
 
         connection = create_connection()
         if connection is None:
@@ -52,14 +68,15 @@ def get_data():
 
         # Build the query based on provided parameters
         query = f"""
-            SELECT 
-                job_id, job_type, brand_code, prefecture, end_point, listing_date, expiry_date, {translation_code} 
-            FROM 
-                aichi_featured_jobs 
-            WHERE 
-                brand_code = %s
+            SELECT {columns_str}
+            FROM aichi_featured_jobs
+            WHERE 1=1
         """
-        params = [brand_code]
+        params = []
+
+        if brand_code:
+            query += " AND brand_code = %s"
+            params.append(brand_code)
 
         if job_type:
             query += " AND job_type = %s"
@@ -71,16 +88,17 @@ def get_data():
         cursor.close()
         connection.close()
 
-        # Convert translation_code field to JSON if possible
+        # Modify column names in the result based on translation code
+        modified_result = []
         for row in result:
-            if row.get(translation_code):
-                try:
-                    row[translation_code] = json.loads(row[translation_code])
-                except json.JSONDecodeError as e:
-                    print(f"JSON decode error for row: {row['job_id']}. Error: {e}")
-                    row[translation_code] = None
+            if translation_code == 'jp_translation':
+                modified_row = {k.replace('_jp', ''): v for k, v in row.items()}
+            elif translation_code == 'en_translation':
+                modified_row = {k.replace('_en', ''): v for k, v in row.items()}
+            modified_result.append(modified_row)
 
-        return jsonify({"data": result})
+        return jsonify({"data": modified_result})
+    
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
